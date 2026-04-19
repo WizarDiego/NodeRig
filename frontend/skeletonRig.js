@@ -1088,7 +1088,7 @@
         
         b.innerHTML = 
             '<span class="skeleton-badge-icon">\uD83E\uDDB4</span>' +
-            '<span class="skeleton-badge-text">Rig Detectado \u00B7 ' + count + '</span>' +
+            '<span class="skeleton-badge-text">RIG DETECTADO \u00B7 ' + count + '</span>' +
             '<div class="skel-tabs">' +
                 '<button class="skel-tab-btn ' + (currentSkeletonTab === "bone" ? "active" : "") + '" id="skel-tab-bone" title="Controle de Bone">\uD83E\uDDB4</button>' +
                 '<button class="skel-tab-btn ' + (currentSkeletonTab === "pose" ? "active" : "") + '" id="skel-tab-pose" title="Biblioteca de Poses">\uD83D\uDCDA</button>' +
@@ -1096,9 +1096,11 @@
             
         b.classList.add("active");
 
-        // Event listeners para troca de abas
-        document.getElementById("skel-tab-bone").onclick = function() { switchSkeletonTab("bone"); };
-        document.getElementById("skel-tab-pose").onclick = function() { switchSkeletonTab("pose"); };
+        // Event listeners
+        var tBone = document.getElementById("skel-tab-bone");
+        var tPose = document.getElementById("skel-tab-pose");
+        if (tBone) tBone.onclick = function(e) { e.stopPropagation(); switchSkeletonTab("bone"); };
+        if (tPose) tPose.onclick = function(e) { e.stopPropagation(); switchSkeletonTab("pose"); };
     }
 
     function switchSkeletonTab(tab) {
