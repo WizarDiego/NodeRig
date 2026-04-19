@@ -445,6 +445,40 @@ canvas {
     color: #ffaa44;
     letter-spacing: 0.02em;
     white-space: nowrap;
+    margin-right: 8px;
+    padding-right: 8px;
+    border-right: 1px solid rgba(255, 140, 0, 0.2);
+}
+
+.skel-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.skel-tab-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.skel-tab-btn:hover {
+    background: rgba(255, 140, 0, 0.2);
+    border-color: #ff8c00;
+}
+
+.skel-tab-btn.active {
+    background: #ff8c00;
+    color: #000;
+    border-color: #ff8c00;
+    box-shadow: 0 0 8px rgba(255, 140, 0, 0.4);
 }
 
 /* Label flutuante do bone selecionado — topo central */
@@ -1573,7 +1607,36 @@ canvas {
 }
 
 /* POSE LIBRARY */
-.pose-library-panel { position: fixed; top: 48px; right: -320px; width: 280px; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); display: flex; flex-direction: column; pointer-events: auto; font-size: 11px; opacity: 0; transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease; z-index: 18; max-height: calc(100vh - 100px); overflow-y: auto; } .pose-library-panel.active { right: 280px; opacity: 1; } .plp-header { background: var(--bg-darker); padding: 10px 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #fff; border-bottom: 1px solid var(--border-color); border-radius: 8px 8px 0 0; } .plp-section { padding: 12px; border-bottom: 1px inset rgba(255, 255, 255, 0.03); } .plp-title { font-weight: 600; color: var(--text-color); margin-bottom: 8px; } .plp-input-row { display: flex; gap: 6px; margin-bottom: 8px; } .plp-input-row input { flex: 1; background: var(--bg-lighter); border: 1px solid var(--border-color); color: #fff; border-radius: 4px; padding: 4px 8px; font-size: 11px; } .plp-input-row button { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-weight: 600; } .plp-input-row button:hover { background: var(--accent-hover); } .plp-list { list-style: none; padding: 0; margin: 0; max-height: 120px; overflow-y: auto; } .plp-list li { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); margin-bottom: 4px; padding: 4px 8px; border-radius: 4px; } .plp-item-name { flex: 1; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .plp-btn { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid transparent; padding: 2px 6px; border-radius: 3px; cursor: pointer; margin-left: 4px; } .plp-btn.plp-apply:hover { background: var(--accent); border-color: var(--accent); } .plp-btn.plp-del:hover { background: #ef4444; }
+.pose-library-panel { 
+    position: fixed; 
+    top: 92px; 
+    left: 14px; 
+    width: 280px; 
+    background: var(--bg-dark); 
+    border: 1px solid var(--border-color); 
+    border-radius: 8px; 
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4); 
+    display: flex; 
+    flex-direction: column; 
+    pointer-events: none; 
+    font-size: 11px; 
+    opacity: 0; 
+    transition: opacity 0.3s ease, transform 0.3s ease; 
+    z-index: 18; 
+    max-height: calc(100vh - 120px); 
+    overflow-y: auto;
+    transform: translateY(-10px);
+} 
+.pose-library-panel.active { 
+    opacity: 1; 
+    pointer-events: auto;
+    transform: translateY(0);
+} 
+.plp-header { background: var(--bg-darker); padding: 10px 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #fff; border-bottom: 1px solid var(--border-color); border-radius: 8px 8px 0 0; } .plp-section { padding: 12px; border-bottom: 1px inset rgba(255, 255, 255, 0.03); } .plp-title { font-weight: 600; color: var(--text-color); margin-bottom: 8px; } .plp-input-row { display: flex; gap: 6px; margin-bottom: 8px; } .plp-input-row input { flex: 1; background: var(--bg-lighter); border: 1px solid var(--border-color); color: #fff; border-radius: 4px; padding: 4px 8px; font-size: 11px; } .plp-input-row button { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-weight: 600; } .plp-input-row button:hover { background: var(--accent-hover); } .plp-list { list-style: none; padding: 0; margin: 0; max-height: 120px; overflow-y: auto; } .plp-list li { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); margin-bottom: 4px; padding: 4px 8px; border-radius: 4px; } .plp-item-name { flex: 1; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .plp-btn { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid transparent; padding: 2px 6px; border-radius: 3px; cursor: pointer; margin-left: 4px; } .plp-btn.plp-apply:hover { background: var(--accent); border-color: var(--accent); } .plp-btn.plp-del:hover { background: #ef4444; }
+
+.skeleton-badge { display: flex; gap: 4px; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 6px; }
+.skel-tab-btn { flex: 1; padding: 4px 8px; border: none; background: transparent; color: #888; font-size: 10px; cursor: pointer; border-radius: 4px; transition: all 0.2s; }
+.skel-tab-btn.active { background: var(--accent); color: #fff; }
 
 .ui-hidden { display: none !important; opacity: 0 !important; pointer-events: none !important; }
 .bcp-global-row { padding: 12px; background: rgba(109, 40, 217, 0.08); border-top: 1px solid var(--border-color); }

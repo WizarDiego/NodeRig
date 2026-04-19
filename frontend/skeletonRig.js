@@ -1085,9 +1085,41 @@
             b.className = "skeleton-badge";
             document.body.appendChild(b);
         }
-        b.innerHTML = '<span class="skeleton-badge-icon">\uD83E\uDDB4</span>' +
-            '<span class="skeleton-badge-text">Rig Detectado \u00B7 ' + count + ' bones</span>';
+        
+        b.innerHTML = 
+            '<span class="skeleton-badge-icon">\uD83E\uDDB4</span>' +
+            '<span class="skeleton-badge-text">Rig Detectado \u00B7 ' + count + '</span>' +
+            '<div class="skel-tabs">' +
+                '<button class="skel-tab-btn ' + (currentSkeletonTab === "bone" ? "active" : "") + '" id="skel-tab-bone" title="Controle de Bone">\uD83E\uDDB4</button>' +
+                '<button class="skel-tab-btn ' + (currentSkeletonTab === "pose" ? "active" : "") + '" id="skel-tab-pose" title="Biblioteca de Poses">\uD83D\uDCDA</button>' +
+            '</div>';
+            
         b.classList.add("active");
+
+        // Event listeners para troca de abas
+        document.getElementById("skel-tab-bone").onclick = function() { switchSkeletonTab("bone"); };
+        document.getElementById("skel-tab-pose").onclick = function() { switchSkeletonTab("pose"); };
+    }
+
+    function switchSkeletonTab(tab) {
+        currentSkeletonTab = tab;
+        
+        // Atualiza botões do badge
+        var btnBone = document.getElementById("skel-tab-bone");
+        var btnPose = document.getElementById("skel-tab-pose");
+        if (btnBone) btnBone.classList.toggle("active", tab === "bone");
+        if (btnPose) btnPose.classList.toggle("active", tab === "pose");
+
+        // Atualiza visibilidade dos painéis
+        if (tab === "bone") {
+            if (selectedBone || selectedBonesGroup.length > 0) showBoneControlPanel();
+            var posePanel = document.getElementById("pose-library-panel");
+            if (posePanel) posePanel.classList.remove("active");
+        } else {
+            updatePoseLibraryUI();
+            var bonePanel = document.getElementById("bone-control-panel");
+            if (bonePanel) bonePanel.classList.remove("active");
+        }
     }
 
     function hideSkeletonBadge() {
@@ -1439,6 +1471,8 @@
     }
 
     function showBoneControlPanel() {
+        if (currentSkeletonTab !== "bone") return;
+
         var panel = document.getElementById("bone-control-panel");
         if (panel) {
             panel.classList.add("active");
@@ -2024,8 +2058,8 @@
     }
 
     var isGlobalMoveEnabled = false;
-    var isUIVisible = true;
-
+    var isUIVisible          = true;
+    var currentSkeletonTab  = "bone";     // "bone" ou "pose"
     // ============================================================
     // MÓDULO 6 — POSE LIBRARY & BONE GROUPS
     // ============================================================
@@ -2203,11 +2237,8 @@
         var panel = document.getElementById("pose-library-panel");
         if (!panel) return;
 
-        // Revela o painel apenas se o esqueleto e o painel de ossos estiver ativo
-        var bcp = document.getElementById("bone-control-panel");
-        var activeBCP = bcp && bcp.classList.contains("active");
-
-        if (isSkeletonActive && (activeBCP || selectedBonesGroup.length > 0)) {
+        // Revela o painel apenas se a aba POSE estiver ativa
+        if (isSkeletonActive && currentSkeletonTab === "pose") {
             panel.classList.add("active");
         } else {
             panel.classList.remove("active");
