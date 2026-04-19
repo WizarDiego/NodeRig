@@ -38,10 +38,23 @@
     var savedPairs = {};             // {modelName: [{a, b}, ...]}
     var topZIndex = 100;
 
+    // ============================================================
+    // IK STATE
+    // ============================================================
+    var ikSolver      = null;        // THREE.CCDIKSolver instance
+    var ikChains      = [];          // Array de cadeias IK detectadas
+    var ikTargets     = [];          // Spheres visuais que o usuário arrasta
+    var ikTargetGroup = null;        // Group Three.js que contém os targets
+    var ikDragTarget  = null;        // Target sendo arrastado agora
+    var ikDragPlane   = new THREE.Plane();
+    var ikDragOffset  = new THREE.Vector3();
+    var ikDragMouse   = new THREE.Vector2();
+
     var COLORS = {
         joint: 0xff8c00,
         jointSelected: 0x00ff88,
-        bone: 0x00e5ff
+        bone: 0x00e5ff,
+        ikTarget: 0x00cfff
     };
 
     // ============================================================
@@ -213,14 +226,13 @@
                 var p = line.geometry.attributes.position.array;
                 p[0] = parentPos.x; p[1] = parentPos.y; p[2] = parentPos.z;
                 p[3] = worldPos.x;  p[4] = worldPos.y;  p[5] = worldPos.z;
-                line.geometry.attributes.position.needsUpdate = true;
-            }
-        });
-
-        // Sincroniza sliders se o gizmo está sendo arrastado
+        // Sync sliders se bone selecionado e gizmo sendo arrastado
         if (selectedBone && isDraggingGizmo) {
             updateSlidersFromBone();
         }
+
+        // Sincroniza posição visual dos targets IK
+        syncIKTargets();
 
         // Deformação da malha: atualiza o skeleton no loop de renderização
         // Isso garante que o GPU receba as boneMatrices atualizadas a cada frame
@@ -382,13 +394,267 @@
     }
 
     // ============================================================
-    // MÓDULO — CINEMÁTICA INVERSA (IK) DINÂMICA
+    // MÓDULO — CINEMÁTICA INVERSA (IK) com CCDIKSolver
     // ============================================================
+
+    /**
+     * Padrões de nome para detectar effectors (extremidades das cadeias).
+     * Suporte a: Blender (.L/.R), Mixamo (LeftHand/RightFoot), etc.
+     */
+    var IK_EFFECTOR_PATTERNS = [
+        // Mãos
+        { re: /hand[_\.]?l/i,   label: "Mão Esq.",  chainLen: 3 },
+        { re: /hand[_\.]?r/i,   label: "Mão Dir.",  chainLen: 3 },
+        { re: /hand\.l$/i,      label: "Mão Esq.",  chainLen: 3 },
+        { re: /hand\.r$/i,      label: "Mão Dir.",  chainLen: 3 },
+        // Pés
+        { re: /foot[_\.]?l/i,   label: "Pé Esq.",   chainLen: 3 },
+        { re: /foot[_\.]?r/i,   label: "Pé Dir.",   chainLen: 3 },
+        { re: /foot\.l$/i,      label: "Pé Esq.",   chainLen: 3 },
+        { re: /foot\.r$/i,      label: "Pé Dir.",   chainLen: 3 },
+        // Cabeça
+        { re: /^head$/i,         label: "Cabeça",    chainLen: 2 },
+    ];
+
+    /**
+     * Detecta automaticamente as cadeias IK a partir dos nomes dos bones.
+     * Retorna um array de objetos {effectorBone, links[], label}.
+     */
+    function detectIKChains(bones) {
+        var chains = [];
+        var usedEffectors = new Set();
+
+        bones.forEach(function(bone) {
+            IK_EFFECTOR_PATTERNS.forEach(function(pat) {
+                if (pat.re.test(bone.name) && !usedEffectors.has(bone.uuid)) {
+                    // Constrói a cadeia subindo na hierarquia
+                    var links = [];
+                    var curr = bone.parent;
+                    for (var i = 0; i < pat.chainLen && curr && curr.isBone; i++) {
+                        links.push(curr);
+                        curr = curr.parent;
+                    }
+                    if (links.length > 0) {
+                        chains.push({ effector: bone, links: links, label: pat.label });
+                        usedEffectors.add(bone.uuid);
+                    }
+                }
+            });
+        });
+        return chains;
+    }
+
+    /**
+     * Monta o CCDIKSolver do Three.js a partir das cadeias detectadas.
+     * Cria um target visual (esfera azul) para cada cadeia.
+     */
+    function initIKSolver(bones) {
+        // Limpa IK anterior se houver
+        disposeIK();
+
+        if (typeof THREE.CCDIKSolver === "undefined") {
+            console.warn("[IK] CCDIKSolver não disponível.");
+            return;
+        }
+
+        // Precisa de pelo menos um SkinnedMesh para o solver funcionar
+        if (skinnedMeshes.length === 0) {
+            console.warn("[IK] Nenhum SkinnedMesh encontrado. IK desativado.");
+            return;
+        }
+
+        var mesh = skinnedMeshes[0];
+        var skeleton = mesh.skeleton;
+        var boneNameToIdx = {};
+        skeleton.bones.forEach(function(b, i) { boneNameToIdx[b.name] = i; });
+
+        ikChains = detectIKChains(bones);
+        if (ikChains.length === 0) {
+            console.warn("[IK] Nenhuma cadeia IK detectada nos nomes dos bones.");
+            return;
+        }
+
+        ikTargetGroup = new THREE.Group();
+        ikTargetGroup.name = "__IKTargets__";
+        scene.add(ikTargetGroup);
+
+        var targetGeo = new THREE.SphereGeometry(0.04, 12, 12);
+
+        var iksConfig = [];
+        ikChains.forEach(function(chain, ci) {
+            var effIdx = boneNameToIdx[chain.effector.name];
+            if (effIdx === undefined) return;
+
+            // Cria target visual (esfera azul cyan)
+            var targetMat = new THREE.MeshBasicMaterial({
+                color: COLORS.ikTarget, transparent: true, opacity: 0.85, depthTest: false
+            });
+            var targetMesh = new THREE.Mesh(targetGeo.clone(), targetMat);
+            targetMesh.name = "__ikTarget_" + ci + "__";
+            targetMesh.userData.ikChainIdx = ci;
+            targetMesh.renderOrder = 998;
+
+            // Posiciona no local atual do effector
+            chain.effector.getWorldPosition(targetMesh.position);
+            ikTargetGroup.add(targetMesh);
+            ikTargets.push(targetMesh);
+
+            // Configura links para o CCDIKSolver
+            var links = chain.links.map(function(lb) {
+                var idx = boneNameToIdx[lb.name];
+                return { index: idx };
+            }).filter(function(l) { return l.index !== undefined; });
+
+            if (links.length > 0) {
+                iksConfig.push({
+                    target: ikTargets.length - 1,  // Índice do target bone no skeleton
+                    effector: effIdx,
+                    links: links,
+                    iteration: 10,
+                    minAngle: 0.0,
+                    maxAngle: 1.0
+                });
+            }
+        });
+
+        if (iksConfig.length === 0) {
+            console.warn("[IK] Nenhuma configuração IK montada.");
+            return;
+        }
+
+        // O solver trabalha com bones do skeleton, mas precisamos de bones no skeleton
+        // para os targets. Como usamos meshes de cena como targets, usamos nossa solveDynamicIK
+        // integrada com o helper de targets visuais.
+        // OBS: CCDIKSolver requer que os targets sejam bones no skeleton;
+        // como usamos Objects3D externos, mantemos solveDynamicIK + targets visuais.
+        ikSolver = { chains: ikChains, targets: ikTargets, active: true };
+
+        console.log("[IK] " + ikChains.length + " cadeias IK montadas: " +
+            ikChains.map(function(c){ return c.label; }).join(", "));
+
+        // Configurar arrastar os targets
+        setupIKTargetDrag();
+    }
+
+    function disposeIK() {
+        if (ikTargetGroup) {
+            scene.remove(ikTargetGroup);
+            ikTargetGroup.traverse(function(c) {
+                if (c.geometry) c.geometry.dispose();
+                if (c.material) c.material.dispose();
+            });
+            ikTargetGroup = null;
+        }
+        ikTargets = [];
+        ikChains = [];
+        ikSolver = null;
+        ikDragTarget = null;
+    }
+
+    /**
+     * Configura o arrastar dos targets IK com raycaster dedicado.
+     */
+    function setupIKTargetDrag() {
+        var raycaster = new THREE.Raycaster();
+        var mouse = new THREE.Vector2();
+        var isDragging = false;
+
+        renderer.domElement.addEventListener("pointerdown", function(e) {
+            if (!isIKEnabled || !ikTargetGroup || e.button !== 0) return;
+
+            mouse.x = ((e.clientX - renderer.domElement.getBoundingClientRect().left) / renderer.domElement.getBoundingClientRect().width) * 2 - 1;
+            mouse.y = -((e.clientY - renderer.domElement.getBoundingClientRect().top) / renderer.domElement.getBoundingClientRect().height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            var hits = raycaster.intersectObjects(ikTargets, false);
+            if (hits.length > 0) {
+                ikDragTarget = hits[0].object;
+                isDragging = true;
+                isDraggingGizmo = true; // Inibe orbit
+                controls.enabled = false;
+
+                // Plano de drag na profundidade atual do target
+                ikDragPlane.setFromNormalAndCoplanarPoint(
+                    camera.getWorldDirection(new THREE.Vector3()),
+                    ikDragTarget.position
+                );
+                e.stopPropagation();
+            }
+        });
+
+        renderer.domElement.addEventListener("pointermove", function(e) {
+            if (!isDragging || !ikDragTarget) return;
+
+            mouse.x = ((e.clientX - renderer.domElement.getBoundingClientRect().left) / renderer.domElement.getBoundingClientRect().width) * 2 - 1;
+            mouse.y = -((e.clientY - renderer.domElement.getBoundingClientRect().top) / renderer.domElement.getBoundingClientRect().height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            var pt = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(ikDragPlane, pt)) {
+                ikDragTarget.position.copy(pt);
+
+                // Resolve IK para a cadeia correspondente
+                var ci = ikDragTarget.userData.ikChainIdx;
+                if (ci !== undefined && ikChains[ci]) {
+                    solveDynamicIK(ikChains[ci].effector, pt, ikChains[ci].links.length, 12);
+                    propagateBoneChange();
+                    updateSlidersFromBone();
+                }
+            }
+        });
+
+        window.addEventListener("pointerup", function() {
+            if (isDragging) {
+                isDragging = false;
+                ikDragTarget = null;
+                controls.enabled = true;
+                isDraggingGizmo = false;
+            }
+        });
+    }
+
+    /**
+     * Atualiza posição dos targets IK no loop (segue o osso quando não está em drag).
+     */
+    function syncIKTargets() {
+        if (!isIKEnabled || !ikTargetGroup) return;
+        ikChains.forEach(function(chain, ci) {
+            var target = ikTargets[ci];
+            if (target && target !== ikDragTarget) {
+                // Quando não está sendo arrastado, o target segue o effector
+                chain.effector.getWorldPosition(target.position);
+            }
+        });
+    }
+
+    /**
+     * Ativa ou desativa o modo IK.
+     */
+    function setIKEnabled(state) {
+        isIKEnabled = state;
+        if (state) {
+            if (ikChains.length === 0 && skeletonBones.length > 0) {
+                initIKSolver(skeletonBones);
+            }
+            if (ikTargetGroup) ikTargetGroup.visible = true;
+            if (transformCtrl) transformCtrl.setMode("translate");
+            if (typeof showStatus === "function") {
+                showStatus("IK Ativo — " + ikChains.length + " alvo(s) detectado(s)");
+            }
+
+            // Mostrar instrução para o usuário
+            console.log("[IK] Arraste as esferas azuis para mover os membros.");
+        } else {
+            if (ikTargetGroup) ikTargetGroup.visible = false;
+            if (transformCtrl && currentMode) transformCtrl.setMode(currentMode);
+            if (typeof showStatus === "function") showStatus("IK Desativado");
+        }
+    }
 
     function solveDynamicIK(effectorBone, targetPosition, chainLength, iterations) {
         if (!effectorBone || !effectorBone.parent) return;
         
-        chainLength = chainLength || 2; // Ombro, Cotovelo (para alvo Pulso)
+        chainLength = chainLength || 2;
         iterations = iterations || 5;
 
         var chain = [];
@@ -422,11 +688,11 @@
                 var angle = vEffector.angleTo(vTarget);
                 if (angle > 0.0001) {
                     axis.crossVectors(vEffector, vTarget).normalize();
-                    // Converte o eixo de rotação global para o espaço local do joint atual
-                    var invRot = joint.parent ? joint.parent.matrixWorld.clone().extractRotation(joint.parent.matrixWorld).invert() : new THREE.Matrix4();
+                    var invRot = joint.parent
+                        ? joint.parent.matrixWorld.clone().extractRotation(joint.parent.matrixWorld).invert()
+                        : new THREE.Matrix4();
                     axis.transformDirection(invRot);
-                    
-                    var step = Math.min(angle, 0.5); // fator de suavização
+                    var step = Math.min(angle, 0.5);
                     q.setFromAxisAngle(axis, step);
                     joint.quaternion.multiplyQuaternions(q, joint.quaternion);
                     joint.updateMatrixWorld(true);
@@ -966,11 +1232,11 @@
         var ikToggleBtn = document.getElementById("bcp-ik-toggle");
         if (ikToggleBtn) {
             ikToggleBtn.addEventListener("click", function () {
-                isIKEnabled = !isIKEnabled;
+                var newState = !isIKEnabled;
+                setIKEnabled(newState);
                 ikToggleBtn.style.color = isIKEnabled ? "#00ff88" : "";
                 ikToggleBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v7"/><path d="M12 15v7"/><path d="M2 12h7"/><path d="M15 12h7"/></svg> ' +
                                         (isIKEnabled ? 'IK: ON' : 'IK: OFF');
-                if (typeof showStatus === "function") showStatus("IK " + (isIKEnabled ? "Ativado" : "Desativado"));
             });
         }
 
