@@ -933,14 +933,35 @@
 
     function setupSceneObserver() {
         var lastCheckedCount = 0;
+        var lastActiveItem = null;
+
         setInterval(function () {
+            // Verifica se a quantidade de itens na cena mudou
             if (typeof sceneRegistry !== "undefined" && sceneRegistry.length !== lastCheckedCount) {
                 lastCheckedCount = sceneRegistry.length;
-                if (sceneRegistry.length > 0) {
-                    processModelForSkeleton(sceneRegistry[sceneRegistry.length - 1].root);
+                if (sceneRegistry.length === 0) {
+                    clearSkeletonVisualization();
                 }
             }
-        }, 1000);
+
+            // Acompanha a seleção de objeto na Navigation Tree
+            if (typeof activeItem !== "undefined" && activeItem !== lastActiveItem) {
+                lastActiveItem = activeItem;
+                
+                // Limpa o rig atual primeiro
+                clearSkeletonVisualization();
+                
+                if (activeItem && activeItem.root) {
+                    var bones = detectSkeleton(activeItem.root);
+                    if (bones.length > 0) {
+                        processModelForSkeleton(activeItem.root);
+                        if (typeof showStatus === "function") {
+                            showStatus("Rig recarregado para " + activeItem.name);
+                        }
+                    }
+                }
+            }
+        }, 500);
     }
 
     function processModelForSkeleton(object3D) {

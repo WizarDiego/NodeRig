@@ -433,8 +433,10 @@ canvas {
 }
 
 .skeleton-badge-icon {
-    font-size: 13px;
-    line-height: 1;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .skeleton-badge-text {
