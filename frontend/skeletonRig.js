@@ -2023,6 +2023,9 @@
         }
     }
 
+    var isGlobalMoveEnabled = false;
+    var isUIVisible = true;
+
     // ============================================================
     // MÓDULO 6 — POSE LIBRARY & BONE GROUPS
     // ============================================================
@@ -2131,6 +2134,9 @@
                     '<button id="plp-save-pose-btn" title="Gravar Posições do Esqueleto">Salvar</button>' +
                 '</div>' +
                 '<ul id="plp-pose-list" class="plp-list"></ul>' +
+            '</div>' +
+            '<div class="bcp-global-row">' +
+                '<button class="bcp-global-btn" id="plp-global-move-btn">Mover Personagem Inteiro</button>' +
             '</div>';
 
         document.body.appendChild(panel);
@@ -2151,6 +2157,46 @@
             saveCurrentPose(name);
             input.value = "";
         });
+
+        document.getElementById("plp-global-move-btn").addEventListener("click", function() {
+            toggleGlobalMove();
+        });
+    }
+
+    function toggleGlobalMove(forceState) {
+        isGlobalMoveEnabled = (forceState !== undefined) ? forceState : !isGlobalMoveEnabled;
+        
+        var btn = document.getElementById("plp-global-move-btn");
+        if (btn) {
+            btn.classList.toggle("active", isGlobalMoveEnabled);
+            btn.textContent = isGlobalMoveEnabled ? "Modo: Personagem (Orbit OFF)" : "Mover Personagem Inteiro";
+        }
+
+        if (isGlobalMoveEnabled) {
+            if (activeItem && activeItem.root && transformCtrl) {
+                transformCtrl.attach(activeItem.root);
+                transformCtrl.setMode("translate");
+                if (typeof showStatus === "function") showStatus("Movendo Personagem Inteiro");
+            }
+        } else {
+            if (selectedBone && transformCtrl) {
+                transformCtrl.attach(selectedBone);
+                transformCtrl.setMode(currentMode);
+            } else if (transformCtrl) {
+                transformCtrl.detach();
+            }
+            if (typeof showStatus === "function") showStatus("Voltando ao Modo Bone");
+        }
+    }
+
+    function toggleUIVisibility() {
+        isUIVisible = !isUIVisible;
+        var ids = ["bone-control-panel", "pose-library-panel", "skeleton-badge", "bone-label", "layout-adjuster"];
+        ids.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.toggle("ui-hidden", !isUIVisible);
+        });
+        if (typeof showStatus === "function") showStatus("Interface " + (isUIVisible ? "Visível" : "Oculta (H para voltar)"));
     }
 
     function updatePoseLibraryUI() {
@@ -2241,6 +2287,18 @@
         initStackingManagement();
         createLayoutControls();
         createPoseLibraryPanel();
+
+        // Keyboard Shortcuts
+        window.addEventListener("keydown", function(e) {
+            if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+            
+            var key = e.key.toLowerCase();
+            if (key === "h") {
+                toggleUIVisibility();
+            } else if (key === "escape") {
+                deselectBone();
+            }
+        });
 
         if (typeof sceneRegistry !== "undefined") {
             setTimeout(function () {
