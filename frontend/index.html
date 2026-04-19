@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NodeRig - Pose Editor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=4.2">
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/animation/CCDIKSolver.js"></script>
+</head>
+<body>
+
+    <!-- ======== TOP-LEFT: Floating Brand Chip ======== -->
+    <div class="brand-chip">
+        <span class="logo">NodeRig <small style="font-size: 9px; opacity: 0.6; vertical-align: middle;">v4.2</small></span>
+        <span class="subtitle">Editor 3D para ComfyUI</span>
+    </div>
+
+    <!-- ======== RIGHT: Scene Graph Panel ======== -->
+    <div class="scene-panel" id="scene-panel">
+        <div class="scene-panel-header">
+            <span>Hierarquia da Cena</span>
+        </div>
+        <ul class="scene-list" id="scene-list">
+            <li class="scene-empty">Nenhum objeto na cena.</li>
+        </ul>
+    </div>
+
+    <!-- ======== BOTTOM: Floating Dock ======== -->
+    <div class="dock" id="bottom-dock">
+
+        <!-- Grupo 1: Resolução e Luz -->
+        <div class="dock-group">
+            <label class="dock-label">Resolução</label>
+            <select id="res-selector" class="res-dropdown">
+                <option value="1024x1024">1024 × 1024</option>
+                <option value="720x960">720 × 960</option>
+                <option value="1024x720">1024 × 720</option>
+            </select>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <div class="dock-group">
+            <label class="dock-label">Luz: <span id="light-val">0.8</span></label>
+            <div class="light-control">
+                <span class="dock-label" style="opacity:0.4;">0</span>
+                <input type="range" id="light-intensity" class="light-slider" min="0" max="5" step="0.1" value="0.8">
+                <span class="dock-label" style="opacity:0.4;">5</span>
+            </div>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <!-- Grupo 2: Carregar 3D -->
+        <div class="dock-group dock-group--row">
+            <input type="file" id="model-upload" accept=".glb,.gltf" style="display: none;" />
+            <button id="btn-load" class="dock-btn" style="color: #a78bfa; border-color: #a78bfa;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Carregar 3D
+            </button>
+            <button id="btn-clear" class="dock-btn" style="color: #f87171; border-color: #f87171;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                Limpar Cena
+            </button>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <!-- Grupo 3: Fundo -->
+        <div class="dock-group dock-group--row">
+            <label class="dock-label">Fundo</label>
+            <input type="file" id="bg-upload" accept=".png,.jpg,.jpeg,.webp" style="display: none;" />
+            <button id="btn-bg-load" class="dock-btn" style="color: #34d399; border-color: #34d399;" title="Carregar imagem de arquivo PNG/JPG">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                + Imagem
+            </button>
+            <button id="btn-bg-export-toggle" class="dock-btn bg-export-toggle" style="display:none;" title="Incluir fundo na exportação">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Exportar
+            </button>
+            <button id="btn-bg-remove" class="dock-btn" style="color: #94a3b8; border-color: rgba(148,163,184,0.25); display:none;" title="Remover fundo">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <!-- Grupo 4: Salvar -->
+        <div class="dock-group dock-group--row">
+            <label class="dock-label">Salvar</label>
+            <button id="btn-save-input" class="dock-btn dock-btn--primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                /input
+            </button>
+            <button id="btn-send-memory" class="dock-btn" style="color: #60a5fa; border-color: #60a5fa;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+                Memória
+            </button>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <!-- Grupo 5: Gerar -->
+        <div class="dock-group">
+            <button id="btn-generate" class="dock-btn dock-btn--accent">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Gerar (Queue)
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Camera Distance HUD -->
+    <div class="camera-hud" id="camera-hud">
+        <span class="hud-label">📷 Câmera</span>
+        <div class="hud-track">
+            <div class="hud-fill" id="hud-fill"></div>
+        </div>
+        <span class="hud-value" id="hud-dist-val">0.00</span>
+    </div>
+
+    <!-- Status Toast -->
+    <div id="status-message" class="status"></div>
+
+    <!-- Modal de Confirmação para Limpar -->
+    <div id="clear-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Tem certeza?</h3>
+            <p>Todo o modelo estrutural será removido da cena.</p>
+            <div class="modal-actions">
+                <button id="btn-cancel" class="modal-btn modal-btn--no">Não</button>
+                <button id="btn-confirm-clear" class="modal-btn modal-btn--yes">SIM</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebGL Canvas will be injected here by app.js -->
+    <script src="app.js?v=4.3"></script>
+    <script src="skeletonRig.js?v=4.3"></script>
+    <script src="lensCamera.js?v=1.0"></script>
+</body>
+</html>

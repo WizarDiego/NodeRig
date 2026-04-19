@@ -1,0 +1,26 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Node / JS artifacts
+node_modules/
+*.min.js.map
+
+# ComfyUI model files (too large for git)
+assets/models/last_loaded.glb
+input_3d/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
