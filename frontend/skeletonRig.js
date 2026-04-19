@@ -165,6 +165,7 @@
             }
         });
 
+        skeletonGroup.visible = isSkelVisualEnabled;
         scene.add(skeletonGroup);
         isSkeletonActive = true;
 
@@ -1988,8 +1989,8 @@
                 if (transformCtrl) transformCtrl.visible = false;
                 setTimeout(function () {
                     if (isOverlayVisible) {
-                        if (skeletonGroup) skeletonGroup.visible = true;
-                        if (transformCtrl) transformCtrl.visible = true;
+                        if (skeletonGroup) skeletonGroup.visible = isSkelVisualEnabled;
+                        if (transformCtrl) transformCtrl.visible = isSkelVisualEnabled;
                     }
                 }, 0);
             }, true);
