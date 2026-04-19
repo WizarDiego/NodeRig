@@ -1334,6 +1334,8 @@
         // Impedir propagação de cliques no painel
         panel.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
         panel.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+
+        document.body.appendChild(panel);
     }
 
     /**
