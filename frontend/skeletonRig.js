@@ -887,21 +887,6 @@
         
         if (!isSkeletonActive || !isOverlayVisible) return;
 
-        // Se o gizmo está ativo, checa se clicamos nele primeiro para não trocar seleção acidentalmente
-        if (transformCtrl && transformCtrl.object) {
-            var rect = renderer.domElement.getBoundingClientRect();
-            skeletonMouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            skeletonMouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-            skeletonRaycaster.setFromCamera(skeletonMouse, camera);
-            
-            // Intersectamos os filhos do transformCtrl para ver se clicou nas setas/aros
-            var gizmoHits = skeletonRaycaster.intersectObjects(transformCtrl.children, true);
-            if (gizmoHits.length > 0) {
-                // Estamos interagindo com o gizmo, não mexe na seleção por clique
-                return;
-            }
-        }
-
         // Se chegamos aqui, ou não há gizmo ou clicamos fora dele
         var handled = handleJointSelection(event);
         if (!handled && !event.shiftKey) {
