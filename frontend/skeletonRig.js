@@ -70,7 +70,8 @@
     }
 
     /**
-     * Salva a pose original de todos os bones para poder resetar depois.
+     * Salva a pose original (bind pose) de todos os bones para poder resetar depois.
+     * Também salva a boneInverse para garantir que a pose de repouso do skinning está correta.
      */
     function saveOriginalTransforms(bones) {
         originalTransforms = {};
@@ -80,6 +81,15 @@
                 rx: bone.rotation.x, ry: bone.rotation.y, rz: bone.rotation.z,
                 sx: bone.scale.x,    sy: bone.scale.y,    sz: bone.scale.z
             };
+        });
+        
+        // Se há SkinnedMeshes, garantir que o bind pose está configurado corretamente.
+        // Isso corrige modelos GLTF que não têm boneMatrices inicializadas.
+        skinnedMeshes.forEach(function (mesh) {
+            if (mesh.skeleton) {
+                mesh.skeleton.calculateInverses();
+                mesh.skeleton.update();
+            }
         });
     }
 
@@ -184,6 +194,7 @@
         var worldPos = new THREE.Vector3();
         var parentPos = new THREE.Vector3();
 
+        // Atualiza posição dos helpers (esferas) para seguir os bones
         jointHelpers.forEach(function (sphere) {
             var bone = jointToBoneMap.get(sphere);
             if (bone) {
@@ -192,6 +203,7 @@
             }
         });
 
+        // Atualiza as linhas de conexão entre bones
         boneLines.forEach(function (line) {
             var childBone = line.userData.childBone;
             var parentBone = line.userData.parentBone;
@@ -205,12 +217,13 @@
             }
         });
 
-        // Sync sliders se bone selecionado e gizmo sendo arrastado
+        // Sincroniza sliders se o gizmo está sendo arrastado
         if (selectedBone && isDraggingGizmo) {
             updateSlidersFromBone();
         }
 
-        // Forçar atualização dos SkinnedMesh para malha acompanhar os bones
+        // Deformação da malha: atualiza o skeleton no loop de renderização
+        // Isso garante que o GPU receba as boneMatrices atualizadas a cada frame
         forceSkeletonUpdate();
     }
 
@@ -219,32 +232,45 @@
     // ============================================================
 
     /**
-     * Força a atualização do skeleton de todos os SkinnedMesh.
-     * Isso garante que a malha deforma corretamente ao mover/rotacionar bones.
+     * Faz a deformação real da malha acontecer.
+     * Precisa ser chamado no loop de animação e sempre que um bone muda.
+     * A ordem correta é:
+     *   1. updateMatrixWorld da raiz do esqueleto
+     *   2. skeleton.update()  → recalcula Bone Matrices para o GPU
      */
     function forceSkeletonUpdate() {
         skinnedMeshes.forEach(function (mesh) {
-            if (mesh.skeleton) {
-                // Atualiza as matrizes do mundo de todos os bones
-                mesh.skeleton.bones.forEach(function (bone) {
-                    bone.updateMatrixWorld(true);
-                });
-                // Recalcula as matrizes do skeleton para deformação
-                mesh.skeleton.update();
+            if (!mesh.skeleton) return;
+            
+            // 1. Propaga as matrizes de mundo pelo grafo de cena inteiro do mesh
+            //    Isso garante que rotações de bones pais cheguem aos filhos.
+            if (mesh.parent) {
+                mesh.parent.updateMatrixWorld(true);
+            } else {
+                mesh.updateMatrixWorld(true);
             }
+ 
+            // 2. Atualiza as boneMatrices que serão enviadas ao shader de skinning
+            mesh.skeleton.update();
         });
     }
 
     /**
-     * Chamado após qualquer mudança manual via sliders/reset.
-     * Propaga as transformações pela hierarquia dos bones.
+     * Chamado após qualquer mudança manual via sliders/gizmo/reset.
+     * Propaga as transformações pela hierarquia dos bones e deforma a malha.
      */
     function propagateBoneChange() {
         if (selectedBone) {
-            // Propaga do bone atual até a raiz
+            // Propaga a partir do bone alterado para baixo na hierarquia
             selectedBone.updateMatrixWorld(true);
+            
+            // Aplica tambem ao Bone B se Link ou Mirror estiver ativo
+            if (isBoneLinkEnabled && selectedBoneB) {
+                selectedBoneB.updateMatrixWorld(true);
+            }
         }
-        // Atualiza todos os SkinnedMesh
+        
+        // Atualiza todos os SkinnedMesh (deformação da malha)
         forceSkeletonUpdate();
     }
 
@@ -676,9 +702,16 @@
             // Carrega pares salvos para este modelo
             loadSavedPairs();
 
-            if (typeof showStatus === "function") {
-                showStatus("Rig detectado: " + bones.length + " bones");
+            // Informa se o modelo suporta deformação ou não
+            var hasSkinning = skinnedMeshes.length > 0;
+            var msg = "Rig detectado: " + bones.length + " bones";
+            if (hasSkinning) {
+                msg += " | " + skinnedMeshes.length + " malha(s) com skinning ✓";
+            } else {
+                msg += " | Sem skinning (mesh estática)";
             }
+            console.log("[SkeletonRig] " + msg);
+            if (typeof showStatus === "function") showStatus(msg);
         }
     }
 
@@ -1661,16 +1694,13 @@
     // ============================================================
 
     function injectIntoRenderLoop() {
-        var _raf = window.requestAnimationFrame;
-        var done = false;
-        window.requestAnimationFrame = function (cb) {
-            if (!done) {
-                done = true;
-                window.requestAnimationFrame = _raf;
-                (function loop() { _raf(loop); updateSkeletonVisualization(); })();
-            }
-            return _raf(cb);
-        };
+        // Ao invés de substituir o requestAnimationFrame global,
+        // usamos um loop dedicado que roda em paralelo ao loop do Three.js.
+        // Isso evita condições de corrida com o renderer principal.
+        (function skelLoop() {
+            window.requestAnimationFrame(skelLoop);
+            updateSkeletonVisualization();
+        })();
     }
 
     // ============================================================
