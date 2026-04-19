@@ -17,7 +17,7 @@
     var transformCtrl = null;
     var isSkeletonActive = false;
     var currentModel = null;
-    var isOverlayVisible = true;
+    var isSkelVisualEnabled = true;
     var currentMode = "rotate";      // "rotate", "translate", "scale"
     var isDraggingGizmo = false;
     var skinnedMeshes = [];          // SkinnedMesh encontrados no modelo
@@ -170,7 +170,6 @@
         isSkeletonActive = true;
 
         showSkeletonBadge(bones.length);
-        createToggleButton();
         createBoneControlPanel();
     }
 
@@ -200,9 +199,8 @@
 
         hideSkeletonBadge();
         hideBoneLabel();
-        hideToggleButton();
         hideBoneControlPanel();
-        isOverlayVisible = true;
+        isSkelVisualEnabled = true;
     }
 
     function updateSkeletonVisualization() {
@@ -714,7 +712,7 @@
 
     function handleJointSelection(event) {
         if (!isSkeletonActive || jointHelpers.length === 0) return false;
-        if (!isOverlayVisible) return false;
+        if (!isSkelVisualEnabled) return false;
 
         var rect = renderer.domElement.getBoundingClientRect();
         skeletonMouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -936,11 +934,11 @@
         if (event.button !== 0) return;
         
         // Bloqueia se clicou em elementos de UI
-        if (event.target.closest(".dock, .scene-panel, .modal-overlay, .skeleton-badge, .bone-label, .skeleton-toggle, .bone-control-panel, .camera-hud")) {
+        if (event.target.closest(".dock, .scene-panel, .modal-overlay, .skeleton-badge, .bone-label, .bone-control-panel, .camera-hud")) {
             return;
         }
         
-        if (!isSkeletonActive || !isOverlayVisible) return;
+        if (!isSkeletonActive || !isSkelVisualEnabled) return;
 
         // Se chegamos aqui, ou não há gizmo ou clicamos fora dele
         var handled = handleJointSelection(event);
@@ -955,7 +953,7 @@
         // A lógica de intersecção do Gizmo acima cuida de não conflitar.
         renderer.domElement.addEventListener("pointerdown", function (event) {
             if (event.button !== 0) return;
-            if (!isSkeletonActive || !isOverlayVisible) return;
+            if (!isSkeletonActive || !isSkelVisualEnabled) return;
             
             // Pequeno delay para permitir que o TransformControls capture se for o caso
             // mas reduzido para sentir "direto"
@@ -1605,7 +1603,7 @@
     function initStackingManagement() {
         // Event delegation no body para capturar cliques em qualquer painel flutuante
         document.body.addEventListener("pointerdown", function(e) {
-            var panel = e.target.closest(".bone-control-panel, .scene-panel, .dock, .camera-hud, .skeleton-badge, .skeleton-toggle");
+            var panel = e.target.closest(".bone-control-panel, .scene-panel, .dock, .camera-hud, .skeleton-badge");
             if (panel) {
                 bringToFront(panel);
             }
@@ -1957,22 +1955,20 @@
     // VISIBILIDADE DO OVERLAY
     // ============================================================
 
-    function hideOverlay() {
-        if (skeletonGroup) skeletonGroup.visible = false;
-        if (transformCtrl) transformCtrl.visible = false;
-        isOverlayVisible = false;
-        updateToggleButton();
-    }
-
     function showOverlay() {
+        isSkelVisualEnabled = true;
         if (skeletonGroup) skeletonGroup.visible = true;
         if (transformCtrl) transformCtrl.visible = true;
-        isOverlayVisible = true;
-        updateToggleButton();
+    }
+
+    function hideOverlay() {
+        isSkelVisualEnabled = false;
+        if (skeletonGroup) skeletonGroup.visible = false;
+        if (transformCtrl) transformCtrl.visible = false;
     }
 
     function toggleOverlay() {
-        if (isOverlayVisible) hideOverlay(); else showOverlay();
+        toggleSkelVisibility();
     }
 
     // ============================================================
@@ -1988,7 +1984,7 @@
                 if (skeletonGroup) skeletonGroup.visible = false;
                 if (transformCtrl) transformCtrl.visible = false;
                 setTimeout(function () {
-                    if (isOverlayVisible) {
+                    if (isSkelVisualEnabled) {
                         if (skeletonGroup) skeletonGroup.visible = isSkelVisualEnabled;
                         if (transformCtrl) transformCtrl.visible = isSkelVisualEnabled;
                     }
@@ -1997,45 +1993,6 @@
         });
     }
 
-    // ============================================================
-    // BOTÃO TOGGLE
-    // ============================================================
-
-    function createToggleButton() {
-        var btn = document.getElementById("skeleton-toggle");
-        if (!btn) {
-            btn = document.createElement("button");
-            btn.id = "skeleton-toggle";
-            btn.className = "skeleton-toggle";
-            document.body.appendChild(btn);
-            btn.addEventListener("click", function () {
-                toggleOverlay();
-                if (typeof showStatus === "function")
-                    showStatus(isOverlayVisible ? "Esqueleto vis\u00EDvel" : "Esqueleto oculto");
-            });
-        }
-        updateToggleButton();
-        btn.classList.add("active");
-    }
-
-    function updateToggleButton() {
-        var btn = document.getElementById("skeleton-toggle");
-        if (!btn) return;
-        if (isOverlayVisible) {
-            btn.innerHTML = '<span class="toggle-icon">\uD83D\uDC41</span>';
-            btn.title = "Ocultar Visualização de Ossos";
-            btn.classList.remove("hidden-state");
-        } else {
-            btn.innerHTML = '<span class="toggle-icon">\uD83D\uDC41\u200D\uD83D\uDDE8</span>';
-            btn.title = "Mostrar Visualização de Ossos";
-            btn.classList.add("hidden-state");
-        }
-    }
-
-    function hideToggleButton() {
-        var btn = document.getElementById("skeleton-toggle");
-        if (btn) btn.classList.remove("active");
-    }
 
     // ============================================================
     // AJUSTE DE LAYOUT (ESPAÇAMENTO VERTICAL)
@@ -2087,6 +2044,27 @@
     var savedPoses = {}; // { modelName: { poseName: { boneName: { px, py, pz, rx, ry, rz, sx, sy, sz } } } }
     var savedGroups = {}; // { modelName: { groupName: ["bone1", "bone2"] } }
 
+    function persistData() {
+        try {
+            localStorage.setItem("NodeRig_SavedPoses_v1", JSON.stringify(savedPoses));
+            localStorage.setItem("NodeRig_SavedGroups_v1", JSON.stringify(savedGroups));
+        } catch (e) {
+            console.error("[SkeletonRig] Falha ao salvar no localStorage:", e);
+        }
+    }
+
+    function loadPersistedData() {
+        try {
+            var p = localStorage.getItem("NodeRig_SavedPoses_v1");
+            var g = localStorage.getItem("NodeRig_SavedGroups_v1");
+            if (p) savedPoses = JSON.parse(p);
+            if (g) savedGroups = JSON.parse(g);
+            console.log("[SkeletonRig] Dados carregados com sucesso.");
+        } catch (e) {
+            console.warn("[SkeletonRig] Erro ao carregar dados salvos:", e);
+        }
+    }
+
     function saveCurrentPose(poseName) {
         if (!currentModelName || skeletonBones.length === 0) return;
         if (!savedPoses[currentModelName]) savedPoses[currentModelName] = {};
@@ -2102,6 +2080,7 @@
         });
 
         savedPoses[currentModelName][poseName] = poseData;
+        persistData();
         if (typeof showStatus === "function") showStatus("Pose '" + poseName + "' salva!");
         updatePoseLibraryUI();
     }
@@ -2136,6 +2115,7 @@
 
         var names = selectedBonesGroup.map(function(b) { return b.name; });
         savedGroups[currentModelName][groupName] = names;
+        persistData();
         if (typeof showStatus === "function") showStatus("Conjunto '" + groupName + "' salvo!");
         updatePoseLibraryUI();
     }
@@ -2293,7 +2273,11 @@
                                '<button class="plp-btn plp-apply">Selecionar</button>' +
                                '<button class="plp-btn plp-del">X</button>';
                 li.querySelector(".plp-apply").addEventListener("click", function() { selectBoneGroup(gName); });
-                li.querySelector(".plp-del").addEventListener("click", function() { delete savedGroups[currentModelName][gName]; updatePoseLibraryUI(); });
+                li.querySelector(".plp-del").addEventListener("click", function() { 
+                    delete savedGroups[currentModelName][gName]; 
+                    persistData();
+                    updatePoseLibraryUI(); 
+                });
                 gList.appendChild(li);
             });
 
@@ -2304,7 +2288,11 @@
                                '<button class="plp-btn plp-apply">Aplicar</button>' +
                                '<button class="plp-btn plp-del">X</button>';
                 li.querySelector(".plp-apply").addEventListener("click", function() { applyPose(pName); });
-                li.querySelector(".plp-del").addEventListener("click", function() { delete savedPoses[currentModelName][pName]; updatePoseLibraryUI(); });
+                li.querySelector(".plp-del").addEventListener("click", function() { 
+                    delete savedPoses[currentModelName][pName]; 
+                    persistData();
+                    updatePoseLibraryUI(); 
+                });
                 pList.appendChild(li);
             });
         }
@@ -2316,10 +2304,10 @@
     window.SkeletonRig = {
         hide: hideOverlay,
         show: showOverlay,
-        toggle: toggleOverlay,
+        toggle: toggleSkelVisibility,
         setMode: setMode,
         resetAll: resetAllBones,
-        isVisible: function () { return isOverlayVisible; },
+        isVisible: function () { return isSkelVisualEnabled; },
         isActive: function () { return isSkeletonActive; }
     };
 
@@ -2343,6 +2331,7 @@
 
     function init() {
         console.log("[SkeletonRig] M\u00F3dulo v3 inicializado.");
+        loadPersistedData();
         injectIntoRenderLoop();
         hookIntoModelLoading();
         hookIntoClearScene();
