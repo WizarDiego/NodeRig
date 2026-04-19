@@ -27,7 +27,9 @@
     var skeletonRaycaster = new THREE.Raycaster();
     var skeletonMouse = new THREE.Vector2();
 
-    var selectedBoneB     = null;        // Segundo bone (par)
+    var selectedBone = null;           // Osso primário (para Gizmo/UI de um osso)
+    var selectedBoneB = null;          // Segundo osso selecionado (para Pair Link)
+    var selectedBonesGroup = [];       // Array de TODOS os ossos atualmente selecionados (Multi-Seleção)
     var isBoneLinkEnabled = false;       // Sincronizar transformações A→B
     var isMirrorEnabled   = false;       // Espelhar A→B
     var mirrorAxis        = "YZ";        // Eixos negados no mirror (padrão Blender L/R)
@@ -185,6 +187,7 @@
         jointToBoneMap.clear();
         selectedBone       = null;
         selectedBoneB      = null;
+        selectedBonesGroup = [];
         isBoneLinkEnabled  = false;
         isMirrorEnabled    = false;
         uniformScale       = false;
@@ -724,8 +727,7 @@
             var bone = jointToBoneMap.get(hitSphere);
             if (bone) {
                 if (event.shiftKey) {
-                    selectBoneB(bone);
-                    if (typeof showStatus === "function") showStatus("Bone B selecionado: " + bone.name);
+                    toggleBoneSelection(bone, hitSphere);
                 } else {
                     selectBone(bone, hitSphere);
                 }
@@ -735,18 +737,11 @@
         return false;
     }
 
+    // ============================================================
+    // LÓGICA DE SELEÇÃO E MULTI-SELEÇÃO
+    // ============================================================
+
     function selectBone(bone, sphere) {
-        // Reset visual do joint anterior (Bone A)
-        if (selectedBone) {
-            jointHelpers.forEach(function (jh) {
-                if (jointToBoneMap.get(jh) === selectedBone) {
-                    jh.material.color.setHex(COLORS.joint);
-                }
-            });
-        }
-
-        selectedBone = bone;
-
         // Encontra a esfera se não foi passada
         if (!sphere) {
             jointHelpers.forEach(function (jh) {
@@ -754,18 +749,16 @@
             });
         }
 
+        // Limpar seleção anterior
+        deselectBone();
+
+        selectedBone = bone;
+        selectedBonesGroup = [bone];
+
+        // Atualizar cor
         if (sphere) sphere.material.color.setHex(COLORS.jointSelected);
 
-        // Re-aplica cor do Bone B (pode ter sido resetada acima se coincidiu)
-        if (selectedBoneB && selectedBoneB !== bone) {
-            jointHelpers.forEach(function (jh) {
-                if (jointToBoneMap.get(jh) === selectedBoneB) {
-                    jh.material.color.setHex(BONE_B_COLOR);
-                }
-            });
-        }
-
-        // Attach TransformControls — apenas Bone A
+        // Attach TransformControls - sempre pega o osso principal
         if (transformCtrl) {
             transformCtrl.attach(bone);
             transformCtrl.setMode(currentMode);
@@ -775,13 +768,83 @@
         showBoneControlPanel();
         updateSlidersFromBone();
         updateBoneSelector();
-
-        console.log("[SkeletonRig] Bone A selecionado: " + bone.name);
+        
+        // Se a lógica do UI de conjunto estiver ativa, atualizar tb
+        if (typeof updatePoseLibraryUI === "function") updatePoseLibraryUI();
     }
 
-    /**
-     * Seleciona um bone pelo nome (usado pelo dropdown).
-     */
+    function toggleBoneSelection(bone, sphere) {
+        if (!sphere) {
+            jointHelpers.forEach(function (jh) {
+                if (jointToBoneMap.get(jh) === bone) sphere = jh;
+            });
+        }
+
+        var idx = selectedBonesGroup.indexOf(bone);
+        if (idx !== -1) {
+            // Remover da seleção
+            selectedBonesGroup.splice(idx, 1);
+            if (sphere) sphere.material.color.setHex(COLORS.joint);
+            
+            // Se tirou o principal...
+            if (bone === selectedBone) {
+                selectedBone = selectedBonesGroup.length > 0 ? selectedBonesGroup[selectedBonesGroup.length - 1] : null;
+                if (!selectedBone) {
+                    deselectBone();
+                    return;
+                } else {
+                    // Mover o Gizmo pro novo principal
+                    if (transformCtrl) transformCtrl.attach(selectedBone);
+                    showBoneLabel(selectedBone.name);
+                }
+            }
+        } else {
+            // Adicionar à seleção
+            selectedBonesGroup.push(bone);
+            if (sphere) sphere.material.color.setHex(COLORS.jointSelected);
+            
+            // O osso recém clicado vira o Gizmo principal (facilitando o uso)
+            selectedBone = bone;
+            if (transformCtrl) transformCtrl.attach(bone);
+            showBoneLabel(bone.name);
+            showBoneControlPanel();
+        }
+
+        // Retro-compatibilidade: Pair Link (Bone B)
+        // Sempre pega os dois últimos ossos selecionados na array como A e B
+        var sLen = selectedBonesGroup.length;
+        if (sLen >= 2) {
+            selectedBone = selectedBonesGroup[sLen - 1]; // Principal
+            selectedBoneB = selectedBonesGroup[sLen - 2];
+        } else {
+            selectedBoneB = null;
+        }
+
+        updateSlidersFromBone();
+        updateBoneSelector();
+        if (typeof updatePoseLibraryUI === "function") updatePoseLibraryUI();
+    }
+
+    function deselectBone() {
+        // Escurecer todas as esferas dos selecionados
+        selectedBonesGroup.forEach(function (b) {
+            jointHelpers.forEach(function (jh) {
+                if (jointToBoneMap.get(jh) === b) jh.material.color.setHex(COLORS.joint);
+            });
+        });
+        
+        selectedBonesGroup = [];
+        selectedBone = null;
+        selectedBoneB = null;
+
+        isBoneLinkEnabled = false;
+        isMirrorEnabled   = false;
+        if (transformCtrl) transformCtrl.detach();
+        hideBoneLabel();
+        hideBoneControlPanel();
+        if (typeof updatePoseLibraryUI === "function") updatePoseLibraryUI();
+    }
+
     function selectBoneByName(boneName) {
         for (var i = 0; i < skeletonBones.length; i++) {
             if (skeletonBones[i].name === boneName) {
@@ -790,30 +853,21 @@
             }
         }
     }
-
-    function deselectBone() {
-        if (selectedBone) {
-            jointHelpers.forEach(function (jh) {
-                if (jointToBoneMap.get(jh) === selectedBone) {
-                    jh.material.color.setHex(COLORS.joint);
+    function selectBoneBByName(boneName) {
+        for (var i = 0; i < skeletonBones.length; i++) {
+            if (skeletonBones[i].name === boneName) {
+                var bone = skeletonBones[i];
+                if (!selectedBonesGroup.includes(bone)) {
+                    selectedBonesGroup.push(bone);
+                    jointHelpers.forEach(function (jh) {
+                        if (jointToBoneMap.get(jh) === bone) jh.material.color.setHex(COLORS.jointSelected);
+                    });
                 }
-            });
-            selectedBone = null;
+                selectedBoneB = bone;
+                updateBoneSelector();
+                return;
+            }
         }
-        // Tambem remove o Bone B
-        if (selectedBoneB) {
-            jointHelpers.forEach(function (jh) {
-                if (jointToBoneMap.get(jh) === selectedBoneB) {
-                    jh.material.color.setHex(COLORS.joint);
-                }
-            });
-            selectedBoneB = null;
-        }
-        isBoneLinkEnabled = false;
-        isMirrorEnabled   = false;
-        if (transformCtrl) transformCtrl.detach();
-        hideBoneLabel();
-        hideBoneControlPanel();
     }
 
     // ============================================================
@@ -1970,6 +2024,182 @@
     }
 
     // ============================================================
+    // MÓDULO 6 — POSE LIBRARY & BONE GROUPS
+    // ============================================================
+
+    var savedPoses = {}; // { modelName: { poseName: { boneName: { px, py, pz, rx, ry, rz, sx, sy, sz } } } }
+    var savedGroups = {}; // { modelName: { groupName: ["bone1", "bone2"] } }
+
+    function saveCurrentPose(poseName) {
+        if (!currentModelName || skeletonBones.length === 0) return;
+        if (!savedPoses[currentModelName]) savedPoses[currentModelName] = {};
+
+        var poseData = {};
+        // Poses salvam o estado do esqueleto inteiro pra facilitar o manuseio.
+        skeletonBones.forEach(function (bone) {
+            poseData[bone.name] = {
+                px: bone.position.x, py: bone.position.y, pz: bone.position.z,
+                rx: bone.rotation.x, ry: bone.rotation.y, rz: bone.rotation.z,
+                sx: bone.scale.x,    sy: bone.scale.y,    sz: bone.scale.z
+            };
+        });
+
+        savedPoses[currentModelName][poseName] = poseData;
+        if (typeof showStatus === "function") showStatus("Pose '" + poseName + "' salva!");
+        updatePoseLibraryUI();
+    }
+
+    function applyPose(poseName) {
+        if (!currentModelName || !savedPoses[currentModelName]) return;
+        var poseData = savedPoses[currentModelName][poseName];
+        if (!poseData) return;
+
+        skeletonBones.forEach(function (bone) {
+            var data = poseData[bone.name];
+            if (data) {
+                bone.position.set(data.px, data.py, data.pz);
+                bone.rotation.set(data.rx, data.ry, data.rz);
+                bone.scale.set(data.sx, data.sy, data.sz);
+                bone.updateMatrixWorld(true);
+            }
+        });
+
+        propagateBoneChange();
+        syncIKTargets();
+        updateSlidersFromBone();
+        if (typeof showStatus === "function") showStatus("Pose '" + poseName + "' aplicada!");
+    }
+
+    function saveBoneGroup(groupName) {
+        if (!currentModelName || selectedBonesGroup.length === 0) {
+            if (typeof showStatus === "function") showStatus("Selecione ossos usando Shift+Click primeiro!", "error");
+            return;
+        }
+        if (!savedGroups[currentModelName]) savedGroups[currentModelName] = {};
+
+        var names = selectedBonesGroup.map(function(b) { return b.name; });
+        savedGroups[currentModelName][groupName] = names;
+        if (typeof showStatus === "function") showStatus("Conjunto '" + groupName + "' salvo!");
+        updatePoseLibraryUI();
+    }
+
+    function selectBoneGroup(groupName) {
+        if (!currentModelName || !savedGroups[currentModelName]) return;
+        var names = savedGroups[currentModelName][groupName];
+        if (!names) return;
+
+        deselectBone();
+
+        skeletonBones.forEach(function(bone) {
+            if (names.includes(bone.name)) {
+                selectedBonesGroup.push(bone);
+                jointHelpers.forEach(function(jh) {
+                    if (jointToBoneMap.get(jh) === bone) jh.material.color.setHex(COLORS.jointSelected);
+                });
+            }
+        });
+
+        if (selectedBonesGroup.length > 0) {
+            selectedBone = selectedBonesGroup[selectedBonesGroup.length - 1]; // Master bone pro gizmo
+            if (transformCtrl) transformCtrl.attach(selectedBone);
+            showBoneLabel("Conjunto: " + groupName);
+            showBoneControlPanel();
+            updateBoneSelector();
+        }
+    }
+
+    function createPoseLibraryPanel() {
+        if (document.getElementById("pose-library-panel")) return;
+
+        var panel = document.createElement("div");
+        panel.id = "pose-library-panel";
+        panel.className = "pose-library-panel";
+        panel.innerHTML = 
+            '<div class="plp-header">Biblioteca de Poses</div>' +
+            '<div class="plp-section">' +
+                '<div class="plp-title">Conjuntos Específicos (Shift+Click)</div>' +
+                '<div class="plp-input-row">' +
+                    '<input type="text" id="plp-group-input" placeholder="Ex: Braço Direito" autocomplete="off" />' +
+                    '<button id="plp-save-group-btn" title="Salvar Ossos Selecionados">Salvar</button>' +
+                '</div>' +
+                '<ul id="plp-group-list" class="plp-list"></ul>' +
+            '</div>' +
+            '<div class="plp-section" style="border-bottom:none;">' +
+                '<div class="plp-title">Poses (Todo o Corpo)</div>' +
+                '<div class="plp-input-row">' +
+                    '<input type="text" id="plp-pose-input" placeholder="Ex: Mão Fechada" autocomplete="off" />' +
+                    '<button id="plp-save-pose-btn" title="Gravar Posições do Esqueleto">Salvar</button>' +
+                '</div>' +
+                '<ul id="plp-pose-list" class="plp-list"></ul>' +
+            '</div>';
+
+        document.body.appendChild(panel);
+
+        panel.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+        panel.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+
+        document.getElementById("plp-save-group-btn").addEventListener("click", function() {
+            var input = document.getElementById("plp-group-input");
+            var name = input.value.trim() || ("Grupo " + Math.floor(Math.random() * 1000));
+            saveBoneGroup(name);
+            input.value = "";
+        });
+
+        document.getElementById("plp-save-pose-btn").addEventListener("click", function() {
+            var input = document.getElementById("plp-pose-input");
+            var name = input.value.trim() || ("Pose " + Math.floor(Math.random() * 1000));
+            saveCurrentPose(name);
+            input.value = "";
+        });
+    }
+
+    function updatePoseLibraryUI() {
+        var panel = document.getElementById("pose-library-panel");
+        if (!panel) return;
+
+        // Revela o painel apenas se o esqueleto e o painel de ossos estiver ativo
+        var bcp = document.getElementById("bone-control-panel");
+        var activeBCP = bcp && bcp.classList.contains("active");
+
+        if (isSkeletonActive && (activeBCP || selectedBonesGroup.length > 0)) {
+            panel.classList.add("active");
+        } else {
+            panel.classList.remove("active");
+        }
+
+        var gList = document.getElementById("plp-group-list");
+        var pList = document.getElementById("plp-pose-list");
+        if (!gList || !pList) return;
+
+        gList.innerHTML = "";
+        pList.innerHTML = "";
+
+        if (currentModelName) {
+            var groups = savedGroups[currentModelName] || {};
+            Object.keys(groups).forEach(function(gName) {
+                var li = document.createElement("li");
+                li.innerHTML = '<span class="plp-item-name" title="' + gName + '">' + gName + '</span>' +
+                               '<button class="plp-btn plp-apply">Selecionar</button>' +
+                               '<button class="plp-btn plp-del">X</button>';
+                li.querySelector(".plp-apply").addEventListener("click", function() { selectBoneGroup(gName); });
+                li.querySelector(".plp-del").addEventListener("click", function() { delete savedGroups[currentModelName][gName]; updatePoseLibraryUI(); });
+                gList.appendChild(li);
+            });
+
+            var poses = savedPoses[currentModelName] || {};
+            Object.keys(poses).forEach(function(pName) {
+                var li = document.createElement("li");
+                li.innerHTML = '<span class="plp-item-name" title="' + pName + '">' + pName + '</span>' +
+                               '<button class="plp-btn plp-apply">Aplicar</button>' +
+                               '<button class="plp-btn plp-del">X</button>';
+                li.querySelector(".plp-apply").addEventListener("click", function() { applyPose(pName); });
+                li.querySelector(".plp-del").addEventListener("click", function() { delete savedPoses[currentModelName][pName]; updatePoseLibraryUI(); });
+                pList.appendChild(li);
+            });
+        }
+    }
+
+    // ============================================================
     // API GLOBAL
     // ============================================================
     window.SkeletonRig = {
@@ -2010,6 +2240,7 @@
         setupEventListeners();
         initStackingManagement();
         createLayoutControls();
+        createPoseLibraryPanel();
 
         if (typeof sceneRegistry !== "undefined") {
             setTimeout(function () {
