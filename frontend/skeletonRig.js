@@ -226,6 +226,9 @@
                 var p = line.geometry.attributes.position.array;
                 p[0] = parentPos.x; p[1] = parentPos.y; p[2] = parentPos.z;
                 p[3] = worldPos.x;  p[4] = worldPos.y;  p[5] = worldPos.z;
+            }
+        });
+
         // Sync sliders se bone selecionado e gizmo sendo arrastado
         if (selectedBone && isDraggingGizmo) {
             updateSlidersFromBone();
