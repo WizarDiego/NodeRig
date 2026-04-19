@@ -1090,6 +1090,7 @@
             '<span class="skeleton-badge-icon">\uD83E\uDDB4</span>' +
             '<span class="skeleton-badge-text">RIG DETECTADO \u00B7 ' + count + '</span>' +
             '<div class="skel-tabs">' +
+                '<button class="skel-tab-btn skel-vis-btn" id="skel-tab-vis" title="Esconder/Mostrar Esqueleto">' + (isSkelVisualEnabled ? "\uD83D\uDC41\uFE0F" : "\uD83D\uDD76\uFE0F") + '</button>' +
                 '<button class="skel-tab-btn ' + (currentSkeletonTab === "bone" ? "active" : "") + '" id="skel-tab-bone" title="Controle de Bone">\uD83E\uDDB4</button>' +
                 '<button class="skel-tab-btn ' + (currentSkeletonTab === "pose" ? "active" : "") + '" id="skel-tab-pose" title="Biblioteca de Poses">\uD83D\uDCDA</button>' +
             '</div>';
@@ -1097,10 +1098,24 @@
         b.classList.add("active");
 
         // Event listeners
+        var tVis  = document.getElementById("skel-tab-vis");
         var tBone = document.getElementById("skel-tab-bone");
         var tPose = document.getElementById("skel-tab-pose");
+        
+        if (tVis)  tVis.onclick  = function(e) { e.stopPropagation(); toggleSkelVisibility(); };
         if (tBone) tBone.onclick = function(e) { e.stopPropagation(); switchSkeletonTab("bone"); };
         if (tPose) tPose.onclick = function(e) { e.stopPropagation(); switchSkeletonTab("pose"); };
+    }
+
+    function toggleSkelVisibility() {
+        isSkelVisualEnabled = !isSkelVisualEnabled;
+        if (skeletonGroup) skeletonGroup.visible = isSkelVisualEnabled;
+        
+        var btn = document.getElementById("skel-tab-vis");
+        if (btn) btn.innerHTML = isSkelVisualEnabled ? "\uD83D\uDC41\uFE0F" : "\uD83D\uDD76\uFE0F";
+        
+        if (typeof showStatus === "function") 
+            showStatus("Visualiza\u00E7\u00E3o do Esqueleto: " + (isSkelVisualEnabled ? "ON" : "OFF"));
     }
 
     function switchSkeletonTab(tab) {
@@ -2059,9 +2074,11 @@
         }
     }
 
-    var isGlobalMoveEnabled = false;
+    var isGlobalMoveEnabled  = false;
+    var globalMoveMode       = "translate";
     var isUIVisible          = true;
-    var currentSkeletonTab  = "bone";     // "bone" ou "pose"
+    var isSkelVisualEnabled  = true;
+    var currentSkeletonTab   = "bone";     // "bone" ou "pose"
     // ============================================================
     // MÓDULO 6 — POSE LIBRARY & BONE GROUPS
     // ============================================================
@@ -2172,7 +2189,11 @@
                 '<ul id="plp-pose-list" class="plp-list"></ul>' +
             '</div>' +
             '<div class="bcp-global-row">' +
-                '<button class="bcp-global-btn" id="plp-global-move-btn">Mover Personagem Inteiro</button>' +
+                '<div class="plp-title" style="margin-bottom:6px; font-size:10px; opacity:0.8;">POSICIONAMENTO GLOBAL</div>' +
+                '<div class="plp-input-row">' +
+                    '<button class="bcp-global-btn" id="plp-global-move-btn" style="flex:1;">\u2726 Mover</button>' +
+                    '<button class="bcp-global-btn" id="plp-global-rotate-btn" style="flex:1;">\u21BB Girar</button>' +
+                '</div>' +
             '</div>';
 
         document.body.appendChild(panel);
@@ -2195,24 +2216,34 @@
         });
 
         document.getElementById("plp-global-move-btn").addEventListener("click", function() {
-            toggleGlobalMove();
+            toggleGlobalMove("translate");
+        });
+        document.getElementById("plp-global-rotate-btn").addEventListener("click", function() {
+            toggleGlobalMove("rotate");
         });
     }
 
-    function toggleGlobalMove(forceState) {
-        isGlobalMoveEnabled = (forceState !== undefined) ? forceState : !isGlobalMoveEnabled;
-        
-        var btn = document.getElementById("plp-global-move-btn");
-        if (btn) {
-            btn.classList.toggle("active", isGlobalMoveEnabled);
-            btn.textContent = isGlobalMoveEnabled ? "Modo: Personagem (Orbit OFF)" : "Mover Personagem Inteiro";
+    function toggleGlobalMove(mode) {
+        if (isGlobalMoveEnabled && globalMoveMode === mode) {
+            // Desliga se já estiver no mesmo modo
+            isGlobalMoveEnabled = false;
+        } else {
+            isGlobalMoveEnabled = true;
+            globalMoveMode = mode;
         }
+        
+        var btnMove = document.getElementById("plp-global-move-btn");
+        var btnRot  = document.getElementById("plp-global-rotate-btn");
+        
+        if (btnMove) btnMove.classList.toggle("active", isGlobalMoveEnabled && globalMoveMode === "translate");
+        if (btnRot)  btnRot.classList.toggle("active",  isGlobalMoveEnabled && globalMoveMode === "rotate");
 
         if (isGlobalMoveEnabled) {
             if (activeItem && activeItem.root && transformCtrl) {
                 transformCtrl.attach(activeItem.root);
-                transformCtrl.setMode("translate");
-                if (typeof showStatus === "function") showStatus("Movendo Personagem Inteiro");
+                transformCtrl.setMode(globalMoveMode);
+                if (typeof showStatus === "function") 
+                    showStatus("Personagem Inteiro: Modo " + (mode === "translate" ? "Movimento" : "Rota\u00E7\u00E3o"));
             }
         } else {
             if (selectedBone && transformCtrl) {
