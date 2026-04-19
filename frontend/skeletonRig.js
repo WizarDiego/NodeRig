@@ -1416,6 +1416,22 @@
         // Mostrar/ocultar row de Escala Uniforme
         var uniformRow = document.getElementById("bcp-uniform-row");
         if (uniformRow) uniformRow.classList.toggle("visible", currentMode === "scale");
+        
+        // Sincronizar estado visual dos botões de Link e Mirror
+        var linkBtn = document.getElementById("bcp-link-btn");
+        if (linkBtn) {
+            linkBtn.classList.toggle("active", isBoneLinkEnabled);
+            linkBtn.innerHTML = (isBoneLinkEnabled ? "\uD83D\uDD17 Link: ON" : "\uD83D\uDD13 Link: OFF");
+        }
+        
+        var mirrorBtn = document.getElementById("bcp-mirror-btn");
+        if (mirrorBtn) {
+            mirrorBtn.classList.toggle("active", isMirrorEnabled);
+            mirrorBtn.innerHTML = (isMirrorEnabled ? "\uD83D\uDD00 Mirror: ON" : "\uD83D\uDD00 Mirror: OFF");
+        }
+        
+        var axisEl = document.getElementById("bcp-mirror-axis");
+        if (axisEl) axisEl.classList.toggle("enabled", isMirrorEnabled);
 
         updateSlidersFromBone();
     }
