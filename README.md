@@ -1,4 +1,5 @@
-# NodeRig v4.3 — 3D Pose Editor for ComfyUI
+# NodeRig v4.3 — 3D Pose Editor for ComfyUI - Brazil edition
+
 
 **NodeRig** is a full 3D pose and skeleton editor integrated directly into **ComfyUI** as a custom node. It runs inside an `iframe` within the ComfyUI interface and communicates with the AI pipeline, sending pose renders as images to downstream nodes.
 
